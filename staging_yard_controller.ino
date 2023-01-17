@@ -1,18 +1,44 @@
 #include <Servo.h>
 
-int TRACK1_POWER = 10;
-int TRACK2_POWER = 11;
+int TRACK1_POWER = 0;
+int TRACK2_POWER = 1;
+int TRACK3_POWER = 2;
+
+int TRACK1_POINTS = 4;
+int TRACK2_POINTS = 5;
+int TRACK3_POINTS = 6;
+
+int TRACK1_SENSOR = A0;
+int TRACK2_SENSOR = A1;
+int TRACK3_SENSOR = A2;
 
 Servo myservo1;
 Servo myservo2;  // create servo object to control a servo
 
 void setup() {
 
-  // turn power off
-  pinMode(11,OUTPUT);
-  pinMode(10,OUTPUT);
+  // turn track power off
+  pinMode(TRACK1_POWER,OUTPUT);
+  pinMode(TRACK2_POWER,OUTPUT);
+  pinMode(TRACK3_POWER,OUTPUT);
   digitalWrite(TRACK1_POWER,HIGH);
   digitalWrite(TRACK2_POWER,HIGH);
+  digitalWrite(TRACK3_POWER,HIGH);
+
+  // initilise points
+  pinMode(TRACK1_POINTS,OUTPUT);
+  pinMode(TRACK2_POINTS,OUTPUT);
+  pinMode(TRACK3_POINTS,OUTPUT);
+  digitalWrite(TRACK1_POINTS,HIGH);
+  digitalWrite(TRACK2_POINTS,HIGH);
+  digitalWrite(TRACK3_POINTS,HIGH);
+
+  delay(500);
+  
+  digitalWrite(TRACK1_POINTS,LOW);
+  digitalWrite(TRACK2_POINTS,LOW);
+  digitalWrite(TRACK3_POINTS,LOW);
+  
   
   myservo1.attach(0);  // attaches the servo on pin 9 to the servo object
   myservo2.attach(1);  // attaches the servo on pin 9 to the servo object
