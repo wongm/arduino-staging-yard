@@ -9,6 +9,7 @@ int ARRIVAL_TIMER_SECONDS = 3;
 LiquidCrystal lcd(13, 12, 11, 10, 9, 8);
 
 // pins for track power relay
+// avoid pins 0 and 1  because they clatter on startup
 int TRACK1_POWER = 2;
 int TRACK2_POWER = 3;
 int TRACK3_POWER = 4;
@@ -22,6 +23,11 @@ int POINTS_2 = 7;
 int TRACK1_SENSOR = A1;
 int TRACK2_SENSOR = A2;
 int TRACK3_SENSOR = A3;
+
+int TRACK_OFF = HIGH;
+int TRACK_ON = LOW;
+int POINTS_NORMAL = LOW;
+int POINTS_REVERSE = HIGH;
 
 // special character since LCD doesn't have backslash
 byte backSlashChar[8] = {
@@ -53,23 +59,19 @@ bool track1occupied, track2occupied, track3occupied;
 void setup() 
 {
   Serial.begin(115200);
-
-  // set up the LCD's number of columns and rows:
-  lcd.begin(16, 2);
-  lcd.createChar(0, backSlashChar);
   
   printMessage("Booting...");
   delay(500);
 
-  //avoid clatter by setting status BEFORE enabling pin: also avoid pins 0 and 1
-  digitalWrite(TRACK1_POWER,HIGH);
-  digitalWrite(TRACK2_POWER,HIGH);
-  digitalWrite(TRACK2_POWER,HIGH);
+  // turn off track power on boot up - relay is NOT energised
+  digitalWrite(TRACK1_POWER, TRACK_OFF);
+  digitalWrite(TRACK2_POWER, TRACK_OFF);
+  digitalWrite(TRACK3_POWER, TRACK_OFF);
   
-  // enable track power, boot up is HIGH with N/O relay contacts connected
-  pinMode(TRACK1_POWER,OUTPUT);
-  pinMode(TRACK2_POWER,OUTPUT);
-  pinMode(TRACK3_POWER,OUTPUT);
+  // avoid clatter by setting status BEFORE enabling pin
+  pinMode(TRACK1_POWER, OUTPUT);
+  pinMode(TRACK2_POWER, OUTPUT);
+  pinMode(TRACK3_POWER, OUTPUT);
 
   state = NO_TRAINS;
   track = 0;
@@ -79,13 +81,13 @@ void setup()
   dotsCounter = 0;
 
   // initialise points boot up is HIGH with N/O relay contacts connected
-  pinMode(POINTS_MAIN,OUTPUT);
-  pinMode(POINTS_1,OUTPUT);
-  pinMode(POINTS_2,OUTPUT);
+  pinMode(POINTS_MAIN, OUTPUT);
+  pinMode(POINTS_1, OUTPUT);
+  pinMode(POINTS_2, OUTPUT);
 
-  pinMode(TRACK1_SENSOR,INPUT);
-  pinMode(TRACK2_SENSOR,INPUT);
-  pinMode(TRACK3_SENSOR,INPUT);
+  pinMode(TRACK1_SENSOR, INPUT);
+  pinMode(TRACK2_SENSOR, INPUT);
+  pinMode(TRACK3_SENSOR, INPUT);
 
   /*
   // set points to known state
@@ -104,6 +106,13 @@ void setup()
   */
 }
 
+void initLCD()
+{
+  // set up the LCD's number of columns and rows:
+  lcd.begin(16, 2);
+  lcd.createChar(0, backSlashChar);
+}
+
 void printMessageAction(String message)
 {  
   //add one or more dots at end of text, increasing over time
@@ -116,7 +125,7 @@ void printMessageAction(String message)
   {
     message += String(" ");
   }
-  printMessage(message);
+  printMessage(message, true);
 
   if (displayTimer % 200)
   {
@@ -131,9 +140,21 @@ void printMessageAction(String message)
 
 void printMessage(String message)
 {
+  printMessage(message, false);
+}
+
+void printMessage(String message, bool skipRefresh)
+{    
   // LCD is slow - only refresh if needed
   if (currentMessage != message)
-  {
+  {  
+    if (!skipRefresh)
+    {
+      // restart LCD in case it's showing gibberish
+      // (if noise on data lines, might cause issue with nibbles getting out of sync)
+      initLCD();
+    }
+  
     lcd.setCursor(0, 0);
     lcd.print(message);
 
@@ -152,23 +173,23 @@ void trainStart(int startTrack)
   switch (track)
   {
     case 1:
-      digitalWrite(TRACK1_POWER,LOW);
-      digitalWrite(POINTS_MAIN,HIGH);
-      digitalWrite(POINTS_1,HIGH);
+      digitalWrite(TRACK1_POWER, TRACK_ON);
+      digitalWrite(POINTS_MAIN, POINTS_REVERSE);
+      digitalWrite(POINTS_1, POINTS_REVERSE);
       break;
       
     case 2:
-      digitalWrite(TRACK2_POWER,LOW);
-      digitalWrite(POINTS_MAIN,HIGH);
-      digitalWrite(POINTS_1,LOW);
-      digitalWrite(POINTS_2,HIGH);
+      digitalWrite(TRACK2_POWER, TRACK_ON);
+      digitalWrite(POINTS_MAIN, POINTS_REVERSE);
+      digitalWrite(POINTS_1, POINTS_NORMAL);
+      digitalWrite(POINTS_2, POINTS_REVERSE);
       break;
       
     case 3:
-      digitalWrite(TRACK3_POWER,LOW);
-      digitalWrite(POINTS_MAIN,HIGH);
-      digitalWrite(POINTS_1,LOW);
-      digitalWrite(POINTS_2,LOW);
+      digitalWrite(TRACK3_POWER, TRACK_ON);
+      digitalWrite(POINTS_MAIN, POINTS_REVERSE);
+      digitalWrite(POINTS_1, POINTS_NORMAL);
+      digitalWrite(POINTS_2, POINTS_NORMAL);
       break;
   }
 }
@@ -220,12 +241,12 @@ void confirmArrived()
   state = CONFIRM_ARRIVED;
   
   // turn yard power off ASAP as detection happens so points don't overrun
-  digitalWrite(TRACK1_POWER,HIGH);
-  digitalWrite(TRACK2_POWER,HIGH);
-  digitalWrite(TRACK3_POWER,HIGH);
+  digitalWrite(TRACK1_POWER, TRACK_OFF);
+  digitalWrite(TRACK2_POWER, TRACK_OFF);
+  digitalWrite(TRACK3_POWER, TRACK_OFF);
 
   // also change points back to mainline
-  digitalWrite(POINTS_MAIN,LOW);
+  digitalWrite(POINTS_MAIN, POINTS_NORMAL);
   
   trackTimer += 1;
 
@@ -244,9 +265,9 @@ void trainRunning()
   printMessage(String("#") + track + String(" running      "));
   
   // turn yard power off
-  digitalWrite(TRACK1_POWER,HIGH);
-  digitalWrite(TRACK2_POWER,HIGH);
-  digitalWrite(TRACK3_POWER,HIGH);
+  //digitalWrite(TRACK1_POWER, TRACK_OFF);
+  //digitalWrite(TRACK2_POWER, TRACK_OFF);
+  //digitalWrite(TRACK3_POWER, TRACK_OFF);
   delay(1000);
 }
 
@@ -257,40 +278,6 @@ void loop()
   track1occupied = !digitalRead(TRACK1_SENSOR);
   track2occupied = !digitalRead(TRACK2_SENSOR);
   track3occupied = !digitalRead(TRACK3_SENSOR);
-
-  displayTimer++;
-  if (displayTimer % 50)
-  {
-    String statusMessage = String("R1:") + (track1occupied ? "X" : "0") + String(" R2:") + (track3occupied ? "X" : "0") + String(" R3:") + (track3occupied ? "X" : "0");
-    
-    spinnyCounter = (displayTimer / 50);
-        
-    Serial.println(String("Occupancy: ") + statusMessage);
-    Serial.println(String("State = ") + state + String(". Running track = ") + track);
-    
-    lcd.setCursor(0, 1);
-    lcd.print(statusMessage + " ");
-    
-    switch (spinnyCounter)
-    {
-      case 0:
-        lcd.print("|");
-        break;
-      case 1:
-        lcd.print("/");
-        break;
-      case 2:
-        lcd.print("-");
-        break;
-      case 3:
-        lcd.write(byte(0));
-        break;
-      case 4:
-        spinnyCounter = 0;
-        displayTimer = 0;
-        break;
-    }
-  }  
 
   switch(state)
   {
@@ -418,9 +405,45 @@ void loop()
           break;
         }
       }
-
-      state = NO_TRAINS;
     }
   }
+
+  displayTimer++;
+  if (displayTimer % 50)
+  {    
+    String statusMessage = String("R1:") + (track1occupied ? "X" : "0") + String(" R2:") + (track2occupied ? "X" : "0") + String(" R3:") + (track3occupied ? "X" : "0");
+    printStatus(statusMessage);
+  }
+  
   delay(10);
+}
+
+void printStatus(String statusMessage)
+{
+  Serial.println(String("Occupancy: ") + statusMessage);
+  Serial.println(String("State = ") + state + String(". Running track = ") + track);
+  
+  lcd.setCursor(0, 1);
+  lcd.print(statusMessage + " ");
+  
+  spinnyCounter = (displayTimer / 50);
+  switch (spinnyCounter)
+  {
+    case 0:
+      lcd.print("|");
+      break;
+    case 1:
+      lcd.print("/");
+      break;
+    case 2:
+      lcd.print("-");
+      break;
+    case 3:
+      lcd.write(byte(0));
+      break;
+    case 4:
+      spinnyCounter = 0;
+      displayTimer = 0;
+      break;
+  }
 }
