@@ -1,33 +1,82 @@
-int TRACK1_POWER = 1;
-int TRACK2_POWER = 2;
-int TRACK3_POWER = 3;
+#include <LiquidCrystal.h>
 
-int POINTS_MAIN = 4;
-int POINTS_1 = 5;
-int POINTS_2 = 6;
+// how many seconds to confirm train has exited?
+int EXIT_TIMER_SECONDS = 8;
+// how many seconds to confirm train has arrived?
+int ARRIVAL_TIMER_SECONDS = 3;
 
+// initialize the LCD with the interface pins
+LiquidCrystal lcd(13, 12, 11, 10, 9, 8);
+
+// pins for track power relay
+int TRACK1_POWER = 2;
+int TRACK2_POWER = 3;
+int TRACK3_POWER = 4;
+
+// pins for relays with capacitors driving the single-coil solenoid points
+int POINTS_MAIN = 5;
+int POINTS_1 = 6;
+int POINTS_2 = 7;
+
+// pins for track sensor modules
 int TRACK1_SENSOR = A1;
 int TRACK2_SENSOR = A2;
 int TRACK3_SENSOR = A3;
 
+// special character since LCD doesn't have backslash
+byte backSlashChar[8] = {
+  0b00000,
+  0b10000,
+  0b01000,
+  0b00100,
+  0b00010,
+  0b00001,
+  0b00000,
+  0b00000
+};
+
+// keep track of LCD message, only update if it changes
+String currentMessage;
+
+// for state machine
 enum State_enum {NO_TRAINS, TRAIN_START, TRAIN_EXITING, CONFIRM_EXITED, TRAIN_EXITED, TRAIN_RUNNING, CONFIRM_ARRIVED, TRAIN_ARRIVED};
 
-int state;
-int track;
-int timer;
+// save current system state in these
+int state, track;
 
-void setup() {
+// various counters
+int trackTimer, displayTimer, spinnyCounter, dotsCounter;
+
+// current status of tracks
+bool track1occupied, track2occupied, track3occupied;
+
+void setup() 
+{
   Serial.begin(115200);
-  Serial.println("booting!");
-  // enable track power, boot up is HIGH with N/O relay contacts connected
 
+  // set up the LCD's number of columns and rows:
+  lcd.begin(16, 2);
+  lcd.createChar(0, backSlashChar);
+  
+  printMessage("Booting...");
+  delay(500);
+
+  //avoid clatter by setting status BEFORE enabling pin: also avoid pins 0 and 1
+  digitalWrite(TRACK1_POWER,HIGH);
+  digitalWrite(TRACK2_POWER,HIGH);
+  digitalWrite(TRACK2_POWER,HIGH);
+  
+  // enable track power, boot up is HIGH with N/O relay contacts connected
   pinMode(TRACK1_POWER,OUTPUT);
   pinMode(TRACK2_POWER,OUTPUT);
   pinMode(TRACK3_POWER,OUTPUT);
 
   state = NO_TRAINS;
   track = 0;
-  timer = 0;
+  trackTimer = 0;
+  displayTimer = 0;
+  spinnyCounter = 0;
+  dotsCounter = 0;
 
   // initialise points boot up is HIGH with N/O relay contacts connected
   pinMode(POINTS_MAIN,OUTPUT);
@@ -55,12 +104,50 @@ void setup() {
   */
 }
 
+void printMessageAction(String message)
+{  
+  //add one or more dots at end of text, increasing over time
+  for (int dots=0; dots <= (dotsCounter / 50); dots++)
+  {
+    message += String(".");
+  }
+  //and add trailing space, in case dots not shown
+  for (int dots=0; dots <= 4 - (dotsCounter / 50); dots++)
+  {
+    message += String(" ");
+  }
+  printMessage(message);
+
+  if (displayTimer % 200)
+  {
+    dotsCounter++;
+  }
+  
+  if (dotsCounter > (3 * 50))
+  {
+    dotsCounter = 1;
+  }
+}
+
+void printMessage(String message)
+{
+  // LCD is slow - only refresh if needed
+  if (currentMessage != message)
+  {
+    lcd.setCursor(0, 0);
+    lcd.print(message);
+
+    Serial.println(message); 
+    currentMessage = message;
+  }
+}
+
 void trainStart(int startTrack)
 {
   state = TRAIN_START;
   track = startTrack;
   
-  Serial.println(String("STATUS: Start train ") + track);
+  printMessage(String("Start train #") + track + String("  "));
   
   switch (track)
   {
@@ -84,40 +171,51 @@ void trainStart(int startTrack)
       digitalWrite(POINTS_2,LOW);
       break;
   }
-  
-  trainExiting();
 }
 
 void trainExiting()
 {
   state = TRAIN_EXITING;
-  delay(2000);
+  trackTimer = 0;
 }
 
 void confirmExited()
 {
-  
   state = CONFIRM_EXITED;
     
-  timer += 1;
+  trackTimer += 1;
 
-  if (timer > 3)
+  //has train reappeared?
+  if (track1occupied && track == 1)
   {
-    timer = 0;
+    trainExiting();
+  }
+  else if (track2occupied && track == 2)
+  {
+    trainExiting();
+  }
+  else if (track3occupied && track == 3)
+  {
+    trainExiting();
+  }
+
+  if (trackTimer > EXIT_TIMER_SECONDS)
+  {
+    trackTimer = 0;
     state = TRAIN_EXITED;
     
-    Serial.println(String("STATUS: train ") + track + String(" exited yard"));
+    printMessage(String("#") + track + String(" exited       "));
   }
   else
   {
-    Serial.println(String("STATUS: confirm train ")+ track + String(" exit: ") + timer + String(" sec..."));
+    printMessage(String("#")+ track + String(" exit? ") + trackTimer + String(" sec  "));
   }
   delay(1000);
 }
 
 void confirmArrived()
 {
-    Serial.println(String("STATUS: confirm train ")+ track + String(" arrival: ") + timer + String(" sec..."));
+  printMessage(String("#")+ track + String(" arrive? ") + trackTimer + String(" sec"));
   
   state = CONFIRM_ARRIVED;
   
@@ -127,15 +225,14 @@ void confirmArrived()
   digitalWrite(TRACK3_POWER,HIGH);
 
   // also change points back to mainline
-      digitalWrite(POINTS_MAIN,LOW);
+  digitalWrite(POINTS_MAIN,LOW);
   
-  timer += 1;
+  trackTimer += 1;
 
-  if (timer > 3)
+  if (trackTimer > ARRIVAL_TIMER_SECONDS)
   {
-    timer = 0;
-    state = TRAIN_ARRIVED;
-    
+    trackTimer = 0;
+    state = TRAIN_ARRIVED;    
   }
   delay(1000);
 }
@@ -144,7 +241,7 @@ void trainRunning()
 {
   state = TRAIN_RUNNING;
   
-  Serial.println(String("STATUS: train ") + track + String(" running"));
+  printMessage(String("#") + track + String(" running      "));
   
   // turn yard power off
   digitalWrite(TRACK1_POWER,HIGH);
@@ -155,26 +252,50 @@ void trainRunning()
 
 void loop() 
 {
-  bool track1occupied = !digitalRead(TRACK1_SENSOR);
-  bool track2occupied = !digitalRead(TRACK2_SENSOR);
-  bool track3occupied = !digitalRead(TRACK3_SENSOR);
-
   // 1 = no trains
   // 0 = covered = train
-  Serial.print("Occupancy: 1=");
-  Serial.print(track1occupied ? "X" : "0");
-  Serial.print(", 2=");
-  Serial.print(track2occupied ? "X" : "0");
-  Serial.print(", 3=");
-  Serial.print(track3occupied ? "X" : "0");
+  track1occupied = !digitalRead(TRACK1_SENSOR);
+  track2occupied = !digitalRead(TRACK2_SENSOR);
+  track3occupied = !digitalRead(TRACK3_SENSOR);
 
-  Serial.println(String(". State = ") + state + String(". Running track = ") + track);
+  displayTimer++;
+  if (displayTimer % 50)
+  {
+    String statusMessage = String("R1:") + (track1occupied ? "X" : "0") + String(" R2:") + (track3occupied ? "X" : "0") + String(" R3:") + (track3occupied ? "X" : "0");
+    
+    spinnyCounter = (displayTimer / 50);
+        
+    Serial.println(String("Occupancy: ") + statusMessage);
+    Serial.println(String("State = ") + state + String(". Running track = ") + track);
+    
+    lcd.setCursor(0, 1);
+    lcd.print(statusMessage + " ");
+    
+    switch (spinnyCounter)
+    {
+      case 0:
+        lcd.print("|");
+        break;
+      case 1:
+        lcd.print("/");
+        break;
+      case 2:
+        lcd.print("-");
+        break;
+      case 3:
+        lcd.write(byte(0));
+        break;
+      case 4:
+        spinnyCounter = 0;
+        displayTimer = 0;
+        break;
+    }
+  }  
 
   switch(state)
   {
     case NO_TRAINS:
     {
-      Serial.println("STATUS: no trains running");
       if ((track1occupied && track2occupied && track3occupied) || (track1occupied && track2occupied && !track3occupied) || (track1occupied && !track2occupied && !track3occupied))
       {
         trainStart(1);
@@ -189,11 +310,16 @@ void loop()
       }
       else
       {
-        Serial.println("Waiting for trains...");
-        delay(2000);
+        printMessageAction("Stage trains");
       }
       break;
     }    
+    case TRAIN_START:
+    {
+      trainExiting();      
+      delay(1000);
+      break;
+    }
     case TRAIN_EXITING:
     {
       if (!track1occupied && track == 1)
@@ -210,7 +336,7 @@ void loop()
       }
       else
       {
-        Serial.println(String("STATUS: train ") + track + String(" still exiting yard"));
+        printMessage(String("#") + track + String(" still exiting"));
       }
       break;
     }
@@ -240,7 +366,7 @@ void loop()
       }
       else
       {
-        Serial.println(String("STATUS: train ") + track + String(" still running..."));
+        printMessageAction(String("#") + track + String(" running"));
       }
       break;
     }
@@ -251,7 +377,7 @@ void loop()
     }
     case TRAIN_ARRIVED:
     {
-      Serial.println(String("STATUS: train ") + track + String(" arrived"));
+      printMessage(String("Train #") + track + String(" arrived"));
       
       switch (track)
       {
@@ -292,6 +418,8 @@ void loop()
           break;
         }
       }
+
+      state = NO_TRAINS;
     }
   }
   delay(10);
