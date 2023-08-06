@@ -117,6 +117,7 @@ void initLCD()
 
 void printMessageAction(String message)
 {  
+  /*
   //add one or more dots at end of text, increasing over time
   for (int dots=0; dots <= (dotsCounter / 50); dots++)
   {
@@ -127,6 +128,7 @@ void printMessageAction(String message)
   {
     message += String(" ");
   }
+  */
   printMessage(message, true);
 
   if (displayTimer % 200)
