@@ -63,7 +63,6 @@ void setup()
   Serial.begin(115200);
   
   printMessage("Booting...");
-  delay(500);
 
   // turn off track power on boot up - relay is NOT energised
   digitalWrite(TRACK1_POWER, TRACK_OFF);
@@ -91,21 +90,22 @@ void setup()
   pinMode(TRACK2_SENSOR, INPUT);
   pinMode(TRACK3_SENSOR, INPUT);
 
-  /*
-  // set points to known state
-  delay(1000);
-  Serial.println("initialise points");
-  digitalWrite(POINTS_MAIN,HIGH);
-  digitalWrite(POINTS_1,HIGH);
-  digitalWrite(POINTS_2,HIGH);
+  // hold startup message
   delay(2000);
 
-  Serial.println("set points to known state");
-  digitalWrite(POINTS_MAIN,LOW);
-  digitalWrite(POINTS_1,LOW);
-  digitalWrite(POINTS_2,LOW);
-  delay(1000);
-  */
+  // throw points backward then forward, 
+  // so capacitors for Kato point motors are always ready to go
+  printMessage("Points reverse...");
+  digitalWrite(POINTS_MAIN, POINTS_REVERSE);
+  digitalWrite(POINTS_1, POINTS_REVERSE);
+  digitalWrite(POINTS_2, POINTS_REVERSE);
+  delay(2000);
+  
+  printMessage("Points normal...");
+  digitalWrite(POINTS_MAIN, POINTS_NORMAL);
+  digitalWrite(POINTS_1, POINTS_NORMAL);
+  digitalWrite(POINTS_2, POINTS_NORMAL);
+  delay(2000);
 }
 
 void initLCD()
