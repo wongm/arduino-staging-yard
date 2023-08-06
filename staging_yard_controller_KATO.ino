@@ -1,8 +1,10 @@
 #include <LiquidCrystal.h>
 
 // how many seconds to confirm train has exited?
-int EXIT_TIMER_SECONDS = 8;
+// until this time expires, no new trains can exit
+int EXIT_TIMER_SECONDS = 16;
 // how many seconds to confirm train has arrived?
+// controls how long between departing trains
 int ARRIVAL_TIMER_SECONDS = 3;
 
 // initialize the LCD with the interface pins
