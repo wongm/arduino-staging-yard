@@ -1,4 +1,16 @@
 #include <LiquidCrystal.h>
+#include <Arduino_Helpers.h> // Include the Arduino Helpers library.
+#include <AH/Hardware/ExtendedInputOutput/ShiftRegisterOut.hpp>
+
+using namespace ExtIO; // Bring the ExtIO pin functions into your sketch
+ 
+const pin_t latchPin = 8; // Pin connected to ST_CP of 74HC595, green wire
+const pin_t dataPin = 10;  // Pin connected to DS of 74HC595, blue wire
+const pin_t clockPin = 9; // Pin connected to SH_CP of 74HC595, white wire
+
+// Instantiate a shift register on the correct pins, most significant bit first,
+// and a total of 8 outputs.
+ShiftRegisterOut<16> sreg {dataPin, clockPin, latchPin, MSBFIRST};
 
 // how many seconds to confirm train has exited?
 // until this time expires, no new trains can exit
@@ -8,23 +20,45 @@ int EXIT_TIMER_SECONDS = 16;
 int ARRIVAL_TIMER_SECONDS = 3;
 
 // initialize the LCD with the interface pins
-LiquidCrystal lcd(13, 12, 11, 10, 9, 8);
+//LiquidCrystal lcd(13, 12, 11, 10, 9, 8);
+LiquidCrystal lcd(7, 6, 5, 4, 3, 2);
 
-// pins for track power relay
+
+/*
+ * 
 // avoid pins 0 and 1  because they clatter on startup
 int TRACK1_POWER = 2;
 int TRACK2_POWER = 3;
 int TRACK3_POWER = 4;
-
-// pins for relays with capacitors driving the single-coil solenoid points
+/*
 int POINTS_MAIN = 5;
 int POINTS_1 = 6;
 int POINTS_2 = 7;
+ */
+
+
+// pins for track power relay
+const pin_t TRACK1_POWER = sreg.pin(15);
+const pin_t TRACK2_POWER = sreg.pin(14);
+const pin_t TRACK3_POWER = sreg.pin(13);
+
+// pins for relays with capacitors driving the single-coil solenoid points
+const pin_t POINTS_MAIN = sreg.pin(12);
+const pin_t POINTS_1 = sreg.pin(11);
+const pin_t POINTS_2 = sreg.pin(10);
+
+// signal outputs
+const pin_t TRACK1_GO = sreg.pin(2);
+const pin_t TRACK1_STOP = sreg.pin(3);
+const pin_t TRACK2_GO = sreg.pin(4);
+const pin_t TRACK2_STOP = sreg.pin(5);
+const pin_t TRACK3_GO = sreg.pin(6);
+const pin_t TRACK3_STOP = sreg.pin(7);
 
 // pins for track sensor modules
-int TRACK1_SENSOR = A1;
-int TRACK2_SENSOR = A2;
-int TRACK3_SENSOR = A3;
+const pin_t TRACK1_SENSOR = A3;
+const pin_t TRACK2_SENSOR = A4;
+const pin_t TRACK3_SENSOR = A5;
 
 int TRACK_OFF = HIGH;
 int TRACK_ON = LOW;
@@ -61,18 +95,20 @@ bool track1occupied, track2occupied, track3occupied;
 void setup() 
 {
   Serial.begin(115200);
+
+  sreg.begin();            // Initialize the shift registers
   
   printMessage("Booting...");
-
-  // turn off track power on boot up - relay is NOT energised
-  digitalWrite(TRACK1_POWER, TRACK_OFF);
-  digitalWrite(TRACK2_POWER, TRACK_OFF);
-  digitalWrite(TRACK3_POWER, TRACK_OFF);
   
   // avoid clatter by setting status BEFORE enabling pin
   pinMode(TRACK1_POWER, OUTPUT);
   pinMode(TRACK2_POWER, OUTPUT);
   pinMode(TRACK3_POWER, OUTPUT);
+
+  // turn off track power on boot up - relay is NOT energised
+  digitalWrite(TRACK1_POWER, TRACK_OFF);
+  digitalWrite(TRACK2_POWER, TRACK_OFF);
+  digitalWrite(TRACK3_POWER, TRACK_OFF);
 
   state = NO_TRAINS;
   track = 0;
@@ -106,6 +142,37 @@ void setup()
   digitalWrite(POINTS_1, POINTS_NORMAL);
   digitalWrite(POINTS_2, POINTS_NORMAL);
   delay(2000);
+  
+  printMessage("Signals off...");
+  digitalWrite(TRACK1_STOP, HIGH);
+  digitalWrite(TRACK1_GO, LOW);
+  digitalWrite(TRACK2_STOP, HIGH);
+  digitalWrite(TRACK2_GO, LOW);
+  digitalWrite(TRACK3_STOP, HIGH);
+  digitalWrite(TRACK3_GO, LOW);
+  delay(2000);
+  
+  printMessage("Track 1 signal...");
+  digitalWrite(TRACK1_STOP, LOW);
+  digitalWrite(TRACK1_GO, HIGH);
+  delay(2000);
+  
+  printMessage("Track 2 signal...");
+  digitalWrite(TRACK1_STOP, HIGH);
+  digitalWrite(TRACK1_GO, LOW);
+  digitalWrite(TRACK2_STOP, LOW);
+  digitalWrite(TRACK2_GO, HIGH);
+  delay(2000);
+  
+  printMessage("Track 3 signal...");
+  digitalWrite(TRACK2_STOP, HIGH);
+  digitalWrite(TRACK2_GO, LOW);
+  digitalWrite(TRACK3_STOP, LOW);
+  digitalWrite(TRACK3_GO, HIGH);
+  delay(2000);
+  
+  digitalWrite(TRACK3_STOP, HIGH);
+  digitalWrite(TRACK3_GO, LOW);
 }
 
 void initLCD()
@@ -177,12 +244,16 @@ void trainStart(int startTrack)
   switch (track)
   {
     case 1:
+      digitalWrite(TRACK1_GO, HIGH);
+      digitalWrite(TRACK1_STOP, LOW);
       digitalWrite(TRACK1_POWER, TRACK_ON);
       digitalWrite(POINTS_MAIN, POINTS_REVERSE);
       digitalWrite(POINTS_1, POINTS_REVERSE);
       break;
       
     case 2:
+      digitalWrite(TRACK2_GO, HIGH);
+      digitalWrite(TRACK2_STOP, LOW);
       digitalWrite(TRACK2_POWER, TRACK_ON);
       digitalWrite(POINTS_MAIN, POINTS_REVERSE);
       digitalWrite(POINTS_1, POINTS_NORMAL);
@@ -190,6 +261,8 @@ void trainStart(int startTrack)
       break;
       
     case 3:
+      digitalWrite(TRACK3_GO, HIGH);
+      digitalWrite(TRACK3_STOP, LOW);
       digitalWrite(TRACK3_POWER, TRACK_ON);
       digitalWrite(POINTS_MAIN, POINTS_REVERSE);
       digitalWrite(POINTS_1, POINTS_NORMAL);
@@ -230,6 +303,12 @@ void confirmExited()
     state = TRAIN_EXITED;
     
     printMessage(String("#") + track + String(" exited       "));
+    digitalWrite(TRACK1_GO, LOW);
+    digitalWrite(TRACK1_STOP, HIGH);
+    digitalWrite(TRACK2_GO, LOW);
+    digitalWrite(TRACK2_STOP, HIGH);
+    digitalWrite(TRACK3_GO, LOW);
+    digitalWrite(TRACK3_STOP, HIGH);
   }
   else
   {
